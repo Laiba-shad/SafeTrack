@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 export default function HomeScreen() {
   return (
     <View style={styles.container}>
-      <Text>seting Screen</Text>
+      <Text>circle Screen changed with geofence</Text>
     </View>
   );
 }

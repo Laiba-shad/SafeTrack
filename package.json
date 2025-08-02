@@ -8,13 +8,18 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+     "server": "nodemon Server/server.js",
+  "frontend": "npx expo start --port 8082", 
+  "dev": "concurrently \"npm run server\" \"npm run frontend\""
   },
   "dependencies": {
     "@expo/vector-icons": "^14.1.0",
+    "@react-native-picker/picker": "^2.11.1",
     "@react-navigation/bottom-tabs": "^7.3.10",
     "@react-navigation/elements": "^2.3.8",
     "@react-navigation/native": "^7.1.6",
+    "axios": "^1.11.0",
     "expo": "~53.0.17",
     "expo-blur": "~14.1.5",
     "expo-constants": "~17.1.7",
@@ -40,6 +45,7 @@
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
+    "concurrently": "^9.2.0",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~9.2.0"
   },
