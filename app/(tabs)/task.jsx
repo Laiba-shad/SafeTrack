@@ -1,169 +1,182 @@
-import { MaterialIcons } from '@expo/vector-icons';
-import { Picker } from '@react-native-picker/picker';
-import { useState } from 'react';
+import { Ionicons } from '@expo/vector-icons';
+import { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   FlatList,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
-  View
+  View,
 } from 'react-native';
+import Toast from 'react-native-toast-message';
+import CreateModal from '../../components/CreateModal';
+import EditModal from '../../components/EditModal';
+import TaskCard from '../../components/TaskCard';
+import { getData } from '../../Server/utils/storage';
+import TodoServices from '../../Services/TodoServices';
 
-export default function TaskScreen() {
-  const [members, setMembers] = useState(['']); // List of team members
-  const [assignedTo, setAssignedTo] = useState(members[0]); // Currently selected member
-  const [newTask, setNewTask] = useState(''); // New task input
-  const [date, setDate] = useState(''); // Date input
-  const [time, setTime] = useState(''); // Time input
-  const [tasks, setTasks] = useState([]); // List of all tasks
+const TodoListScreen = () => {
+ const [allTasks, setAllTasks] = useState([]);
+  const [filtered, setFiltered] = useState([]);
+  const [statusFilter, setStatusFilter] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
+  const [editTask, setEditTask] = useState(null);
 
-  const addTask = () => {
-    if (!newTask.trim()) return; // Prevent empty tasks
-    setTasks(prev => [
-      ...prev,
-      {
-        id: Date.now().toString(), // Unique task ID
-        title: newTask,
-        assignedTo,
-        date,
-        time,
-        status: 'pending' // Status stays pending (admin doesn't complete it)
-      }
-    ]);
-    setNewTask('');
-    setDate('');
-    setTime('');
+  const loadTasks = async () => {
+    //setloading will load spinner
+    setLoading(true);
+    //getDATA will get the user data from storage or database
+    const user = await getData('todoapp');
+    if (!user?.user?.id) {
+      Toast.show({ type: 'error', text1: 'User not found' });
+      setLoading(false);
+      setAllTasks([]);
+setFiltered([]);
+
+      
+      return;
+    }
+    try {
+      const { data } = await TodoServices.getAllTodo(user.user.id);
+      setAllTasks(data.todos);
+    } catch (err) {
+      Toast.show({ type: 'error', text1: 'Failed to fetch tasks' });
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const deleteTask = (id) => {
-    setTasks(prev => prev.filter(task => task.id !== id)); // Remove task by ID
-  };
+  useEffect(() => {
+    loadTasks();
+  }, []);
 
-  const renderTask = ({ item }) => (
-    <View style={styles.taskItem}>
-      <View style={styles.taskInfo}>
-        <Text style={styles.taskText}>{item.title}</Text>
-        <Text style={styles.assignedText}>Assigned to: {item.assignedTo}</Text>
-        <Text style={styles.assignedText}>Date: {item.date} | Time: {item.time}</Text>
-      </View>
-      <TouchableOpacity onPress={() => deleteTask(item.id)}>
-        <MaterialIcons name="delete" size={24} color="#c62828" />
-      </TouchableOpacity>
-    </View>
-  );
+  useEffect(() => {
+    if (statusFilter === 'completed') {
+      setFiltered(allTasks.filter(t => t.isCompleted));
+    } else if (statusFilter === 'incomplete') {
+      setFiltered(allTasks.filter(t => !t.isCompleted));
+    } else {
+      setFiltered(allTasks);
+    }
+  }, [statusFilter, allTasks]);
 
   return (
     <View style={styles.container}>
+      <Text style={styles.heading}>Your Tasks</Text>
 
-      {/* Form UI (moved to top) */}
-      <Text style={styles.label}>Assign to:</Text>
-      <View style={styles.pickerWrapper}>
-        <Picker
-          selectedValue={assignedTo}
-          onValueChange={setAssignedTo}
-          style={styles.picker}
-        >
-          {members.map(member => (
-            <Picker.Item key={member} label={member} value={member} />
-          ))}
-        </Picker>
-      </View>
+     <View style={styles.filterWrapper}>
+  {['All', 'Incomplete', 'Completed'].map((label) => {
+    const value = label.toLowerCase() === 'all' ? '' : label.toLowerCase();
+    const isActive = statusFilter === value;
+    return (
+      <TouchableOpacity
+        key={value}
+        style={[styles.filterBtn, isActive && styles.activeBtn]}
+        onPress={() => setStatusFilter(value)}
+      >
+        <Text style={[styles.filterText, isActive && styles.activeText]}>
+          {label}
+        </Text>
+      </TouchableOpacity>
+    );
+  })}
+</View>
 
-      <TextInput
-        style={styles.input}
-        placeholder="Enter new task"
-        value={newTask}
-        onChangeText={setNewTask}
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Assign date (e.g., 2025-07-25)"
-        value={date}
-        onChangeText={setDate}
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Assign time (e.g., 14:00)"
-        value={time}
-        onChangeText={setTime}
-      />
-      <TouchableOpacity style={styles.addButton} onPress={addTask}>
-        <Text style={styles.addButtonText}>+ Create</Text>
+      {loading ? (
+        <ActivityIndicator size="large" color="#FF9800" />
+      ) : (
+        <FlatList
+          data={filtered}
+          keyExtractor={(item) => item._id}
+          contentContainerStyle={{ paddingBottom: 100 }}
+          renderItem={({ item }) => (
+            <TaskCard
+              task={item}
+              onEdit={() => setEditTask(item)}
+              onDelete={async (id) => {
+                await TodoServices.deleteTodo(id);
+                Toast.show({ type: 'success', text1: 'Deleted' });
+                loadTasks();
+              }}
+            />
+          )}
+        />
+      )}
+
+      {/* Floating Action Button to Add Task */}
+      <TouchableOpacity style={styles.fab} onPress={() => setShowCreate(true)}>
+        <Ionicons name="add" size={30} color="#fff" />
       </TouchableOpacity>
 
-      {/* List of tasks */}
-      <FlatList
-        data={tasks}
-        keyExtractor={item => item.id}
-        renderItem={renderTask}
-        contentContainerStyle={{ paddingBottom: 20 }}
-      />
+<CreateModal
+ visible={showCreate}
+onClose={() => setShowCreate(false)}
+ onTaskCreated={loadTasks}
+/>
+
+      {editTask && (
+        <EditModal
+          visible={!!editTask}
+          onClose={() => setEditTask(null)}
+          task={editTask}
+          onUpdated={loadTasks}
+        />
+      )}
+      <Toast />
     </View>
   );
-}
+};
+
+export default TodoListScreen;
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
-    padding: 20
+    backgroundColor: '#E0F7FA', // light teal
+    paddingHorizontal: 16,
+    paddingTop: 30,
   },
-  taskItem: {
-    flexDirection: 'row',
+  heading: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#00796B', // deep teal
+    marginBottom: 12,
+  },
+filterWrapper: {
+  flexDirection: 'row',
+  justifyContent: 'space-around',
+  marginBottom: 16,
+},
+filterBtn: {
+  paddingVertical: 8,
+  paddingHorizontal: 16,
+  borderRadius: 20,
+  backgroundColor: '#B2EBF2', // lighter teal
+},
+activeBtn: {
+  backgroundColor: '#00796B', // deep teal
+},
+filterText: {
+  color: '#00796B',
+  fontWeight: '500',
+},
+activeText: {
+  color: '#fff',
+},
+  fab: {
+    position: 'absolute',
+    right: 20,
+    bottom: 30,
+    backgroundColor: '#FF9800', // orange
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#fdecc8',
-    borderRadius: 20,
-    padding: 12,
-    marginVertical: 6
+    justifyContent: 'center',
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowOffset: { width: 0, height: 2 },
   },
-  taskInfo: {
-    flex: 1,
-    marginLeft: 10
-  },
-  taskText: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#333'
-  },
-  assignedText: {
-    fontSize: 12,
-    color: '#666',
-    marginTop: 4
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 12,
-    padding: 10,
-    marginTop: 10,
-    marginBottom: 6
-  },
-  addButton: {
-    backgroundColor: '#00a98f',
-    padding: 14,
-    borderRadius: 14,
-    alignItems: 'center',
-    marginTop: 8,
-    marginBottom: 16
-  },
-  addButtonText: {
-    color: '#fff',
-    fontWeight: 'bold'
-  },
-  label: {
-    marginTop: 10,
-    fontWeight: '600',
-    marginBottom: 4
-  },
-  pickerWrapper: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 10,
-    marginBottom: 6
-  },
-  picker: {
-    height: 40,
-    width: '100%'
-  }
 });

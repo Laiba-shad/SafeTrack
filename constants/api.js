@@ -1,8 +1,8 @@
-// app/constants/api.js
+// constants/api.js
 import axios from 'axios';
 
-// Get your local IP with `ipconfig` or `ifconfig` if you're using Expo Go
 const API = axios.create({
-  baseURL: "http://10.85.178.133:8081", 
+  baseURL: "http://192.168.43.38:8081/api/v1", 
 });
+
 export default API;
