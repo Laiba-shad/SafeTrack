@@ -1,139 +1,91 @@
-// components/EditModal.js
-import DateTimePicker from '@react-native-community/datetimepicker';
-import { useEffect, useState } from 'react';
+import DateTimePicker from "@react-native-community/datetimepicker";
+import { useEffect, useState } from "react";
 import {
-  Button,
   Modal,
-  Platform,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
-} from 'react-native';
-import TodoServices from '../Services/TodoServices';
+} from "react-native";
+import TodoService from "../Services/TodoServices";
 
-const EditModal = ({ visible, onClose, onEdit, task }) => {
-  // Form states
-  const [title, setTitle] = useState(task?.title || '');
-  const [description, setDescription] = useState(task?.description || '');
-  const [dueDate, setDueDate] = useState(task?.dueDate ? new Date(task.dueDate) : new Date());
-  const [users, setUsers] = useState([]);
-  const [assignedTo, setAssignedTo] = useState(task?.assignedTo || '');
+const EditModal = ({ visible, onClose, task, onTaskUpdated }) => {
+  const [title, setTitle] = useState(task?.title || "");
+  const [description, setDescription] = useState(task?.description || "");
+  const [dueDate, setDueDate] = useState(
+    task?.dueDate ? new Date(task.dueDate) : new Date()
+  );
   const [showDatePicker, setShowDatePicker] = useState(false);
 
-  // Load users from backend
   useEffect(() => {
-    const fetchUsers = async () => {
-      try {
-        const usersData = await TodoServices.getUsers();
-        setUsers(usersData);
-      } catch (error) {
-        console.error('Error fetching users:', error);
-      }
-    };
-
-    fetchUsers();
-  }, []);
-
-  // Update state when task prop changes
-  useEffect(() => {
-    setTitle(task?.title || '');
-    setDescription(task?.description || '');
-    setDueDate(task?.dueDate ? new Date(task.dueDate) : new Date());
-    setAssignedTo(task?.assignedTo || '');
+    if (task) {
+      setTitle(task.title || "");
+      setDescription(task.description || "");
+      setDueDate(task.dueDate ? new Date(task.dueDate) : new Date()); 
+    }
   }, [task]);
 
-  // Date picker handler
-  const onDateChange = (event, selectedDate) => {
-    if (selectedDate) {
-      setDueDate(selectedDate);
-    }
-    setShowDatePicker(false);
-  };
-
-  // Submit handler
-  const handleEdit = async () => {
-    if (!title || !description || !dueDate || !assignedTo) {
-      alert('Please fill in all fields');
-      return;
-    }
-
+  const handleUpdate = async () => {
     try {
-      const updatedTask = {
+      const payload = {
         title,
         description,
-        dueDate,
-        assignedTo,
+        dueDate: dueDate ? new Date(dueDate).toISOString() : null, 
       };
 
-      await TodoServices.updateTask(task._id, updatedTask);
-      onEdit(); // Refresh task list
-      onClose(); // Close modal
-    } catch (error) {
-      console.error('Error updating task:', error);
+      const res = await TodoService.updateTask(task._id, payload);
+
+      const updatedTask = { ...task, ...res.data };
+      onTaskUpdated(updatedTask);
+      onClose();
+    } catch (err) {
+      console.error("Error updating task:", err);
     }
   };
 
   return (
     <Modal visible={visible} animationType="slide" transparent>
-      <View style={styles.overlay}>
+      <View style={styles.modalOverlay}>
         <View style={styles.modalContainer}>
-          <ScrollView contentContainerStyle={styles.scrollView}>
-            <Text style={styles.title}>Edit Task</Text>
+          <Text style={styles.header}>Edit Task</Text>
 
-            <TextInput
-              style={styles.input}
-              placeholder="Title"
-              value={title}
-              onChangeText={setTitle}
+          <TextInput
+            style={styles.input}
+            value={title}
+            onChangeText={setTitle}
+          />
+          <TextInput
+            style={styles.input}
+            value={description}
+            onChangeText={setDescription}
+          />
+
+          <TouchableOpacity onPress={() => setShowDatePicker(true)}>
+            <Text style={styles.dateText}>
+              Due Date: {dueDate.toLocaleString()}
+            </Text>
+          </TouchableOpacity>
+          {showDatePicker && (
+            <DateTimePicker
+              value={dueDate}
+              mode="datetime"
+              display="default"
+              onChange={(event, selectedDate) => {
+                setShowDatePicker(false);
+                if (selectedDate) setDueDate(new Date(selectedDate)); // ✅ always Date
+              }}
             />
+          )}
 
-            <TextInput
-              style={styles.input}
-              placeholder="Description"
-              value={description}
-              onChangeText={setDescription}
-            />
-
-            <Text style={styles.label}>Assign To:</Text>
-            <View style={styles.picker}>
-              <select
-                value={assignedTo || ''}
-                onChange={(e) => setAssignedTo(e.target.value)}
-                style={{ fontSize: 16, padding: 8 }}
-              >
-                <option value="">-- Select a user --</option>
-                {users.map((user) => (
-                  <option key={user._id} value={user._id}>
-                    {user.username}
-                  </option>
-                ))}
-              </select>
-            </View>
-
-            <Text style={styles.label}>Due Date & Time:</Text>
-            <TouchableOpacity onPress={() => setShowDatePicker(true)} style={styles.dateBtn}>
-              <Text style={styles.dateText}>
-                {dueDate.toLocaleString()}
-              </Text>
+          <View style={styles.actions}>
+            <TouchableOpacity style={styles.btn} onPress={onClose}>
+              <Text style={styles.btnText}>Cancel</Text>
             </TouchableOpacity>
-
-            {showDatePicker && (
-              <DateTimePicker
-                value={dueDate}
-                mode="datetime"
-                display={Platform.OS === 'ios' ? 'inline' : 'default'}
-                onChange={onDateChange}
-              />
-            )}
-
-            <View style={styles.buttonGroup}>
-              <Button title="Update Task" onPress={handleEdit} />
-              <Button title="Cancel" color="red" onPress={onClose} />
-            </View>
-          </ScrollView>
+            <TouchableOpacity style={styles.btn} onPress={handleUpdate}>
+              <Text style={styles.btnText}>Update</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
     </Modal>
@@ -143,58 +95,29 @@ const EditModal = ({ visible, onClose, onEdit, task }) => {
 export default EditModal;
 
 const styles = StyleSheet.create({
-  overlay: {
+  modalOverlay: {
     flex: 1,
-    backgroundColor: '#000000aa',
-    justifyContent: 'center',
-    padding: 20,
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.5)",
   },
   modalContainer: {
-    backgroundColor: '#fff',
-    borderRadius: 10,
+    backgroundColor: "#fff",
+    margin: 20,
     padding: 20,
-    maxHeight: '90%',
+    borderRadius: 10,
   },
-  scrollView: {
-    paddingBottom: 20,
-  },
-  title: {
-    fontSize: 22,
-    marginBottom: 15,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    color: '#222',
-  },
+  header: { fontSize: 20, fontWeight: "bold", marginBottom: 10 },
   input: {
-    borderWidth: 1,
-    borderColor: '#888',
-    padding: 10,
-    marginBottom: 12,
-    borderRadius: 8,
+    borderBottomWidth: 1,
+    marginBottom: 10,
+    padding: 8,
   },
-  label: {
+  dateText: { marginVertical: 10, color: "#333" },
+  actions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
     marginTop: 10,
-    fontWeight: '600',
   },
-  picker: {
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#aaa',
-    borderRadius: 6,
-    backgroundColor: '#f9f9f9',
-    padding: 2,
-  },
-  dateBtn: {
-    padding: 10,
-    backgroundColor: '#e0e0e0',
-    marginBottom: 15,
-    borderRadius: 8,
-  },
-  dateText: {
-    fontSize: 16,
-  },
-  buttonGroup: {
-    flexDirection: 'column',
-    gap: 10,
-  },
+  btn: { marginLeft: 15 },
+  btnText: { color: "#006678", fontWeight: "bold" },
 });

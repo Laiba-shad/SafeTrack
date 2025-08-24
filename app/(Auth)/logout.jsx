@@ -5,7 +5,8 @@ export default function useAuthActions() {
 const { logout } = useAuth();
 
 const handleLogout = async () => {
-  await logout(); // this clears token AND updates appState
+  await logout();
+  
 };
 
 

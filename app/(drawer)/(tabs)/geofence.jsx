@@ -1,5 +1,5 @@
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { useAuth } from "../../Server/context/AuthContext";
+import { useAuth } from "../../../Server/context/AuthContext";
 
 export default function SettingsScreen() {
   const { logout } = useAuth();

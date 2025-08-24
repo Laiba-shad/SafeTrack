@@ -1,20 +1,26 @@
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
 
 const todoSchema = new mongoose.Schema({
-  title: String,
+  title: { type: String, required: true },
   description: String,
-  createdBy: String,
+
+  createdBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    required: true
+  },
+
   dueDate: Date,
   isCompleted: {
     type: Boolean,
-    default: false,
+    default: false
   },
- 
+
   assignedTo: {
-     type: mongoose.Schema.Types.ObjectId, 
-     ref: 'users' }, 
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    required: true
+  }
 }, { timestamps: true });
 
-
-
-module.exports = mongoose.model('Todo', todoSchema);
+module.exports = mongoose.model("Todo", todoSchema);

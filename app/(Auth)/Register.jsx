@@ -1,10 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
-import axios from 'axios';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Toast from 'react-native-toast-message';
 import { handleAPIError } from '../../Services/errorHandler';
+import API from '../../constants/api';
 
 export default function RegisterScreen() {
   const router = useRouter();
@@ -13,6 +13,8 @@ export default function RegisterScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState('member'); // default role
+  const [circleName, setCircleName] = useState(''); // 🔹 NEW: Circle name
+  const [joinCode, setJoinCode] = useState('')
 
   const handleRegister = async () => {
     if (!username || !email || !password) {
@@ -20,13 +22,23 @@ export default function RegisterScreen() {
       return;
     }
 
+    // role admin h na k member
+  if (role === 'member' && !joinCode) {
+  Toast.show({ type: 'error', text1: 'Member must have join code' });
+  return;
+}
+
     try {
-      const res = await axios.post('http://192.168.43.38:8081/api/v1/auth/register', {
-      // const res = await axios.post('http://localhost:8081/api/v1/auth/register', {
+      const res = await API.post('/auth/register', {
         username,
         email,
         password,
         role,
+        //backend mn kch or expeatation hn
+       // circleName:(role === 'admin' && { circleName }), // send only if admin
+         // joinCode: (role === 'member' && { joinCode }),
+   ...(role === 'admin' ? { circleName } : {}),
+   ...(role === 'member' ? { joinCode } : {}),      // ✅ send only if member
       });
 
       Toast.show({ type: 'success', text1: 'Check your email for OTP' });
@@ -34,7 +46,7 @@ export default function RegisterScreen() {
       // Pass email to OTP screen
       router.replace({
         pathname: '/(auth)/otp-verification',
-        params: { email },
+      params: { email, role, ...(role === 'admin' && { circleName }) }
       });
 
     } catch (err) {
@@ -51,6 +63,7 @@ export default function RegisterScreen() {
     <View style={styles.container}>
       <Text style={styles.title}>Create Account</Text>
 
+      {/* Username */}
       <TextInput
         style={styles.input}
         placeholder="Username"
@@ -58,6 +71,8 @@ export default function RegisterScreen() {
         value={username}
         onChangeText={setUsername}
       />
+
+      {/* Email */}
       <TextInput
         style={styles.input}
         placeholder="Email"
@@ -66,6 +81,8 @@ export default function RegisterScreen() {
         value={email}
         onChangeText={setEmail}
       />
+
+      {/* Password */}
       <TextInput
         style={styles.input}
         placeholder="Password"
@@ -75,28 +92,54 @@ export default function RegisterScreen() {
         onChangeText={setPassword}
       />
 
-<View style={styles.pickerContainer}>
-  <Text style={styles.pickerLabel}>Role:</Text>
-  <View style={styles.radioGroup}>
-    {["member", "admin"].map((option) => (
-      <TouchableOpacity
-        key={option}
-        style={styles.radioOption}
-        onPress={() => setRole(option)}
-      >
-        <Ionicons
-          name={role === option ? "radio-button-on" : "radio-button-off"}
-          size={22}
-          color="#008080"
-        />
-        <Text style={styles.radioLabel}>
-          {option.charAt(0).toUpperCase() + option.slice(1)}
-        </Text>
-      </TouchableOpacity>
-    ))}
-  </View>
-</View>
- <TouchableOpacity style={styles.button} onPress={handleRegister}>
+      {/* Role Selection */}
+      <View style={styles.pickerContainer}>
+        <Text style={styles.pickerLabel}>Select Role</Text>
+        <View style={styles.radioGroup}>
+          {["member", "admin"].map((option) => (
+            <TouchableOpacity
+              key={option}
+              style={styles.radioOption}
+              onPress={() => setRole(option)}
+            >
+              <Ionicons
+                name={role === option ? "radio-button-on" : "radio-button-off"}
+                size={22}
+                color="#008080"
+              />
+              <Text style={styles.radioLabel}>
+                {option.charAt(0).toUpperCase() + option.slice(1)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+
+   {/* 🔹 Show Circle name if Admin */}
+{role === "admin" && (
+  <TextInput
+    style={styles.input}
+    placeholder="Enter Circle Name As Admin"
+    placeholderTextColor="#aaa"
+    value={circleName}
+    onChangeText={setCircleName}
+  />
+)}
+
+{/* 🔹 Show Join Code if Member */}
+{role === "member" && (
+  <TextInput
+    style={styles.input}
+    placeholder="Enter Join Code If You Are Member"
+    placeholderTextColor="#aaa"
+    value={joinCode}
+    onChangeText={setJoinCode}
+  />
+)}
+
+
+      {/* Register Button */}
+      <TouchableOpacity style={styles.button} onPress={handleRegister}>
         <Text style={styles.buttonText}>Sign Up</Text>
       </TouchableOpacity>
 
@@ -111,9 +154,14 @@ const styles = StyleSheet.create({
   container: { flex: 1, justifyContent: 'center', padding: 25, backgroundColor: '#f4f9f9' },
   title: { fontSize: 28, fontWeight: 'bold', marginBottom: 25, color: '#008080', textAlign: 'center' },
   input: { backgroundColor: '#fff', padding: 15, borderRadius: 12, marginBottom: 15, borderWidth: 1, borderColor: '#ccc' },
-  pickerContainer: { backgroundColor: '#fff', borderRadius: 12, borderWidth: 1, borderColor: '#ccc', marginBottom: 20, padding: 5 },
-  pickerLabel: { padding: 8, color: '#555', fontWeight: 'bold' },
-  picker: { height: 50, width: '100%' },
+  pickerContainer: { backgroundColor: '#fff', borderRadius: 12, borderWidth: 1, borderColor: '#ccc', marginBottom: 20, padding: 10 },
+  pickerLabel: { fontSize: 16, marginBottom: 8, color: '#555', fontWeight: 'bold' },
+
+  // 🔹 IMPROVED role selection styling
+  radioGroup: { flexDirection: 'row', justifyContent: 'space-around' },
+  radioOption: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8 },
+  radioLabel: { marginLeft: 6, fontSize: 16, color: '#333' },
+
   button: { backgroundColor: '#ff7f50', padding: 15, borderRadius: 12, alignItems: 'center', marginBottom: 15 },
   buttonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
   linkText: { textAlign: 'center', color: '#008080', fontWeight: 'bold' }

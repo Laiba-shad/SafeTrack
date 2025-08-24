@@ -1,218 +1,346 @@
-// Server/controllers/authController.js
-const User = require('../models/userModel'); // ← keep your path
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
-const sendOTPEmail = require('../utils/sendOTPEmail'); // ← one, consistent import
+const User = require("../models/userModel");
+const Circle = require("../models/Circle");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
+const nodemailer = require("nodemailer");
 
-// helper
-const genOtp = () => Math.floor(100000 + Math.random() * 900000).toString();
-const now = () => Date.now();
-const OTP_TTL_MS = 10 * 60 * 1000; // 10 minutes
+// ----------------- EMAIL HELPER -----------------
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+});
 
-// REGISTER (accepts either username or name from frontend)
-const registerUser = async (req, res) => {
+async function sendOTP(email, otp) {
+  await transporter.sendMail({
+    from: process.env.EMAIL_USER,
+    to: email,
+    subject: "Verify your account",
+    text: `Your OTP is: ${otp}`,
+  });
+}
+
+// ----------------- REGISTER -----------------
+exports.registerUser = async (req, res) => {
   try {
-    const { username, name, email, password, role } = req.body;
+    if (!req.body) return res.status(400).json({ message: "No request body provided" });
 
-    if (!email || !password || !(username || name)) {
-      return res.status(400).json({ message: 'username/name, email, password are required' });
+    let { username, email, password, role, circleName, joinCode } = req.body;
+
+    // Normalize
+    if (typeof email === "string") email = email.trim().toLowerCase();
+
+    // Basic required fields
+    if (!username || !email || !password || !role) {
+      return res.status(400).json({ message: "Please Fill All Fields" });
     }
 
-    const existing = await User.findOne({ email: email.toLowerCase() });
-    if (existing) return res.status(400).json({ message: 'Email already registered' });
+    const existingUser = await User.findOne({ email });
+    if (existingUser) return res.status(400).json({ message: "User already exists" });
 
-  //  const password = rawPassword.trim(); // Add this
+    // Role-specific requirements
+    if (role === "admin" && !circleName) {
+      return res.status(400).json({ message: "Circle name is required for admins" });
+    }
+    if (role === "member" && !joinCode) {
+      return res.status(400).json({ message: "Join code is required for members" });
+    }
 
-    const hash = await bcrypt.hash(password, 10);
-    const otpCode = genOtp();
+    const otp = Math.floor(100000 + Math.random() * 900000); // 6-digit
 
-    // set both username & name safely (schema will ignore unknown fields if strict)
-    const doc = new User({
-      username: username || name,
-      name: name || username,
-      email: email.toLowerCase(),
-      password: hash,
-      role: role || 'member',
+    const user = new User({
+      username,
+      email,
+      password,
+      role,
+      otp,
       isVerified: false,
-      otpCode,
-      otpExpires: now() + OTP_TTL_MS,
+      ...(role === "member" && { tempJoinCode: joinCode })
     });
 
-    await doc.save();
-    await sendOTPEmail(email, otpCode);
-    console.log(`Generated OTP for ${email}: ${otpCode}`);
-
-
-    return res.status(201).json({ message: 'User registered. Please check your email for OTP.' });
-  } catch (err) {
-    console.error('Register error:', err);
-    return res.status(500).json({ message: 'Server error' });
-  }
-};
-
-// VERIFY OTP (POST /verify-email)
-const verifyOTP = async (req, res) => {
-  try {
-    const { email, otp } = req.body;
-
-    // Validate request body
-    if (!email || !otp) {
-      return res.status(400).json({ message: 'Email and OTP are required' });
-    }
-
-    // Convert OTP to string (to avoid type mismatch issues)
-    const otpStr = otp.toString().trim();
-  //  const email = rawEmail.trim().toLowerCase() ; // Add this
-
-    // Find user with matching email + otp, and ensure otp not expired
-    const user = await User.findOne({
-      email: email.toLowerCase(),
-      otpCode: otpStr,
-      otpExpires: { $gt: Date.now() },
-    });
-
-    if (!user) {
-      return res.status(400).json({ message: 'Invalid or expired OTP' });
-    }
-
-    // Mark user as verified & clear OTP fields
-    user.isVerified = true;
-    user.otpCode = undefined;
-    user.otpExpires = undefined;
     await user.save();
+    await sendOTP(email, otp);
 
-    // Generate JWT token (valid for 7 days)
-    const token = jwt.sign(
-      { userId: user._id, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: '7d' }
-    );
-
-    // Send response exactly how OTP screen expects
-    return res.status(200).json({
-      message: 'Email verified successfully. You can now log in.',
-      token,
+    return res.status(201).json({
+      message: "User registered. Verify OTP to continue.",
+      userId: user._id,
       role: user.role,
     });
-  } catch (err) {
-    console.error('Verify OTP error:', err);
-    return res.status(500).json({ message: 'Server error' });
+  } catch (error) {
+    console.error("register error:", error);
+    return res.status(500).json({ message: "Registration failed", error: error.message });
   }
 };
 
-
-// LOGIN
-const loginUser = async (req, res) => {
+exports.verifyOTP = async (req, res) => {
   try {
-        console.log("Request Body:", req.body); // 👈 Add this line
+    if (!req.body) return res.status(400).json({ message: "No request body provided" });
 
-    const { email, password } = req.body;
+    let { email, otp, circleName } = req.body;
 
-    if (!email || !password) {
-      return res.status(400).json({ message: "Email and password are required" });
+    // Normalize
+    if (typeof email === "string") email = email.trim().toLowerCase();
+    if (typeof otp === "string") otp = otp.trim();
+
+    if (!email || !otp) {
+      return res.status(400).json({ message: "Email and OTP are required" });
     }
 
-    const user = await User.findOne({ email: email.toLowerCase() });
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    if (user.otp == null) {
+      return res.status(400).json({ message: "No OTP set for this user" });
     }
 
-    const valid = await bcrypt.compare(password, user.password);
-    if (!valid) {
-      return res.status(400).json({ message: "Invalid credentials" });
+    // Compare as strings to avoid number/string mismatch
+    if (String(user.otp) !== String(otp)) {
+      return res.status(400).json({ message: "Invalid OTP" });
     }
 
-    // If not verified, send OTP again
-    if (!user.isVerified) {
-      const otpCode = genOtp();
-      user.otpCode = otpCode;
-      user.otpExpires = Date.now() + OTP_TTL_MS; // ✅ Changed now() → Date.now()
-      await user.save();
+    user.isVerified = true;
+    user.otp = null;
 
-      await sendOTPEmail(email, otpCode);
-      return res.status(200).json({ requireOTP: true, message: "OTP sent. Please verify." });
+    // Role-specific handling
+    if (user.role === "admin") {
+      // Create a circle for admin
+      const joinCode = crypto.randomBytes(3).toString("hex").toUpperCase();
+      const circle = new Circle({
+        name: circleName || `${user.username || "Admin"}'s Circle`,
+        code: joinCode,
+        admin: user._id,
+        members: [user._id],
+      });
+      await circle.save();
+      user.circleId = circle._id;
+    } else if (user.role === "member") {
+      // Member joins with tempJoinCode stored on registration
+      if (!user.tempJoinCode) {
+        return res.status(400).json({ message: "No join code found for member" });
+      }
+      const circle = await Circle.findOne({ code: user.tempJoinCode });
+      if (!circle) return res.status(404).json({ message: "Invalid join code" });
+
+      if (!circle.members.includes(user._id)) {
+        circle.members.push(user._id);
+        await circle.save();
+      }
+
+      user.circleId = circle._id;
+      user.tempJoinCode = null;
     }
 
-    // ✅ Token generation
+    await user.save();
+
     const token = jwt.sign(
-      { userId: user._id, role: user.role },
+      { id: user._id, role: user.role },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
 
-    return res.status(200).json({
-      message: "Login successful",
+    return res.json({
+      message: "OTP verified successfully",
       token,
-      role: user.role,
       user: {
         id: user._id,
         username: user.username,
         email: user.email,
         role: user.role,
+        circleId: user.circleId ?? null,
       },
     });
-
-  } catch (err) {
-    console.error("Login error:", err.message, err.stack);
-    return res.status(500).json({ message: err.message });
+  } catch (error) {
+    console.error("verify-otp error:", error);
+    return res.status(500).json({ message: "OTP verification failed", error: error.message });
   }
 };
 
-
-// RESEND
-
-// FORGOT PASSWORD (send OTP for reset)
-const forgotPassword = async (req, res) => {
+exports.loginUser = async (req, res) => {
   try {
-    const { email } = req.body;
-    if (!email) return res.status(400).json({ message: 'Email is required' });
-
-    const user = await User.findOne({ email: email.toLowerCase() });
-    if (!user) return res.status(404).json({ message: 'User not found' });
-
-    const otpCode = genOtp();
-    user.otpCode = otpCode;
-    user.otpExpires = now() + OTP_TTL_MS;
-    await user.save();
-
-    await sendOTPEmail(email, otpCode);
-    return res.status(200).json({ message: 'OTP sent to your email for password reset' });
-  } catch (err) {
-    console.error('Forgot Password Error:', err);
-    return res.status(500).json({ message: 'Server Error' });
-  }
-};
-
-// RESET PASSWORD (using OTP)
-const resetPassword = async (req, res) => {
-  try {
-    const { email, otp, newPassword } = req.body;
-    if (!email || !otp || !newPassword)
-      return res.status(400).json({ message: 'Email, OTP, and new password are required' });
-
-    const user = await User.findOne({
-      email: email.toLowerCase(),
-      otpCode: otp,
-      otpExpires: { $gt: now() },
+    let { email, password } = req.body;
+    if (typeof email === "string") email = email.trim().toLowerCase();
+    
+    const user = await User.findOne({ email });
+    if (!user) {
+      console.log("User not found");
+      return res.status(404).json({ message: "User not found" });
+    }
+        
+    if (!user.isVerified) {
+      return res.status(400).json({ message: "Please verify your OTP first" });
+    }
+    
+    const isMatch = await user.matchPassword(password);
+     if (!isMatch) return res.status(400).json({ message: "Invalid credentials" });
+    
+    const token = jwt.sign(
+      { id: user._id, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+    
+    return res.json({
+      message: "Login successful",
+      token,
+      user: {
+        _id: user._id,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        circleId: user.circleId ?? null,
+      },
     });
-    if (!user) return res.status(400).json({ message: 'Invalid or expired OTP' });
+  } catch (error) {
+    console.error("login error:", error);
+    return res.status(500).json({ message: "Login failed", error: error.message });
+  }
+};
+// ----------------- JOIN CIRCLE (MEMBER) -----------------
+exports.joinCircle = async (req, res) => {
+  try {
+    const { userId, joinCode } = req.body || {};
+    if (!userId || !joinCode) {
+      return res.status(400).json({ message: "userId and joinCode are required" });
+    }
 
-    user.password = await bcrypt.hash(newPassword, 10);
-    user.otpCode = undefined;
-    user.otpExpires = undefined;
+    const circle = await Circle.findOne({ code: joinCode });
+    if (!circle) return res.status(404).json({ message: "Invalid join code" });
+
+    if (!circle.members.includes(userId)) {
+      circle.members.push(userId);
+      await circle.save();
+    }
+
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    user.circleId = circle._id;
     await user.save();
 
-    return res.status(200).json({ message: 'Password reset successful. You can now log in.' });
-  } catch (err) {
-    console.error('Reset Password Error:', err);
-    return res.status(500).json({ message: 'Server Error' });
+    return res.json({ message: "Joined circle successfully", circle });
+  } catch (error) {
+    console.error("joinCircle error:", error);
+    return res.status(500).json({ message: "Failed to join circle", error: error.message });
   }
 };
 
-module.exports = {
-  registerUser,
-  verifyOTP,        // used by /verify-email and /verify-otp (both map to same handler)
-  loginUser,
-  forgotPassword,
-  resetPassword,
+// ----------------- GENERATE NEW JOIN CODE (ADMIN) -----------------
+exports.generateJoinCode = async (req, res) => {
+  try {
+    const { circleId } = req.body || {};
+    if (!circleId) return res.status(400).json({ message: "circleId is required" });
+
+    const circle = await Circle.findById(circleId);
+    if (!circle) return res.status(404).json({ message: "Circle not found" });
+
+    const newCode = crypto.randomBytes(3).toString("hex").toUpperCase();
+    circle.code = newCode;
+    await circle.save();
+
+    return res.json({ message: "New join code generated", code: newCode });
+  } catch (error) {
+    console.error("generateJoinCode error:", error);
+    return res.status(500).json({ message: "Failed to generate join code", error: error.message });
+  }
+};
+
+
+exports.forgotPassword = async (req, res) => {
+  try {
+    let { email } = req.body || {};
+    if (typeof email === "string") email = email.trim().toLowerCase();
+    console.log("Forgot password request for:", email);
+    
+    if (!email) return res.status(400).json({ message: "Email is required" });
+    
+    const user = await User.findOne({ email });
+    if (!user) {
+      console.log("User not found for email:", email);
+      return res.status(404).json({ message: "User not found" });
+    }
+    
+    const otp = Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit OTP
+    user.resetPasswordToken = otp;
+    user.resetPasswordExpires = Date.now() + 3600000; // 1 hour
+    await user.save();
+    
+    console.log("Reset token generated:", otp);
+    
+    await transporter.sendMail({
+      from: process.env.EMAIL_USER,
+      to: email,
+      subject: "Your Password Reset OTP",
+      text: `Your OTP for password reset is: ${otp}. It will expire in 1 hour.`,
+    });
+    
+    console.log("OTP sent to email");
+    return res.json({ message: "OTP for password reset has been sent" });
+  } catch (error) {
+    console.error("forgotPassword error:", error);
+    return res.status(500).json({ message: "Failed to send OTP", error: error.message });
+  }
+};
+
+
+
+
+exports.resetPassword = async (req, res) => {
+  try {
+    const { token, newPassword } = req.body || {};
+    console.log("Reset password request received");
+    console.log("Token:", token);
+    console.log("New password provided:", !!newPassword);
+    
+    if (!token || !newPassword) {
+      console.log("Missing token or newPassword");
+      return res.status(400).json({ message: "token and newPassword are required" });
+    }
+    
+    console.log("Looking for user with reset token...");
+    const user = await User.findOne({
+      resetPasswordToken: token,
+      resetPasswordExpires: { $gt: Date.now() },
+    });
+    
+    if (!user) {
+      console.log("Invalid or expired token");
+      return res.status(400).json({ message: "Invalid or expired token" });
+    }
+    
+    console.log("User found:", user.email);
+    
+    // Set the plain password (will be hashed by pre-save hook)
+    user.password = newPassword;
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpires = undefined;
+    await user.save();
+    
+    console.log("Password reset successful for user:", user.email);
+    
+    const jwtToken = jwt.sign(
+      { id: user._id, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+    
+    console.log("Generated JWT token for automatic login");
+    
+    return res.json({
+      message: "Password reset successful",
+      token: jwtToken,
+      user: {
+        _id: user._id,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        circleId: user.circleId ?? null,
+      },
+    });
+  } catch (error) {
+    console.error("resetPassword error:", error);
+    return res.status(500).json({ message: "Failed to reset password", error: error.message });
+  }
 };
