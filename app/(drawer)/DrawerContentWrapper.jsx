@@ -1,4 +1,3 @@
-// app/(drawer)/DrawerContentWrapper.jsx
 import { useEffect } from "react";
 import { navigationRef } from "../navigation/NavigationRef";
 import CustomDrawerContent from "./CustomDrawerContent";

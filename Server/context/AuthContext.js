@@ -1,4 +1,3 @@
-// Server/context/AuthContext.js
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { getData, removeData, storeData } from "../utils/storage";
 
@@ -6,7 +5,7 @@ const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
   const [appState, setAppState] = useState({
-    status: "LOADING",
+    isLoading:true,
     token: null,
     user: null,
   });
@@ -21,8 +20,7 @@ export const AuthProvider = ({ children }) => {
         const user = userStr ? JSON.parse(userStr) : null;
         console.log("AuthContext: Found token:", !!token);
         console.log("AuthContext: Found user:", !!user);
-        
-        // Only set as authenticated if both token and user exist
+
         if (token && user) {
           setAppState({
             status: "AUTHENTICATED",
@@ -30,7 +28,6 @@ export const AuthProvider = ({ children }) => {
             user,
           });
         } else {
-          // If token exists but user doesn't, clear the token and set to AUTH
           if (token) {
             await removeData("token");
           }
@@ -59,7 +56,6 @@ export const AuthProvider = ({ children }) => {
         await storeData("role", shaped.role ?? null);
         setAppState({ status: "AUTHENTICATED", token, user: shaped });
       } else {
-        // If no user is provided, we cannot authenticate properly
         await removeData("token");
         setAppState({ status: "AUTH", token: null, user: null });
       }
@@ -82,11 +78,19 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Memoize the context value to prevent unnecessary re-renders
+  const updateUser = (userData) => {
+    setAppState(prevState => ({
+      ...prevState,
+      user: userData
+    }));
+  };
+
+
   const contextValue = useMemo(() => ({
     appState,
     login,
-    logout
+    logout,
+    updateUser
   }), [appState]);
 
   return (

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import Ionicons from "react-native-vector-icons/Ionicons";
 
 const CustomInput = ({
   label,
@@ -9,40 +10,44 @@ const CustomInput = ({
   maxLength,
   value,
   onChangeText,
+  editable = true,
+  secureTextEntry = false,
+  showPasswordToggle = false,
   ...rest
 }) => {
-  const [secureTextEntry, setSecureTextEntry] = useState(true);
+  const [showPassword, setShowPassword] = useState(secureTextEntry);
   const isPassword = type === "password";
 
   return (
     <View style={styles.container}>
-      {/* Label */}
       {label && <Text style={styles.label}>{label}</Text>}
-
-      {/* Input wrapper */}
       <View style={styles.inputWrapper}>
-        {/* Optional icon */}
-        {icon && <View style={styles.icon}>{icon}</View>}
-
-        {/* Input field */}
+        {icon && (
+          <View style={styles.icon}>
+            {icon}
+          </View>
+        )}
         <TextInput
-          style={styles.input}
+          style={[styles.input, !editable && styles.inputDisabled]}
           placeholder={placeholder}
-          secureTextEntry={isPassword && secureTextEntry}
+          placeholderTextColor="#999"
+          secureTextEntry={isPassword && showPassword}
           maxLength={maxLength}
           value={value}
           onChangeText={onChangeText}
+          editable={editable}
           {...rest}
         />
-
-        {/* Password toggle */}
-        {isPassword && (
+        {isPassword && showPasswordToggle && (
           <TouchableOpacity
-            onPress={() => setSecureTextEntry(!secureTextEntry)}
+            onPress={() => setShowPassword(!showPassword)}
+            style={styles.toggleButton}
           >
-            <Text style={styles.toggleText}>
-              {secureTextEntry ? "Show" : "Hide"}
-            </Text>
+            <Ionicons
+              name={showPassword ? "eye-off-outline" : "eye-outline"}
+              size={20}
+              color="#ff7f50"
+            />
           </TouchableOpacity>
         )}
       </View>
@@ -50,15 +55,13 @@ const CustomInput = ({
   );
 };
 
-export default CustomInput;
-
 const styles = StyleSheet.create({
   container: {
     marginBottom: 15,
   },
   label: {
     fontSize: 14,
-    fontWeight: "500",
+    fontWeight: "600",
     marginBottom: 5,
     color: "#333",
   },
@@ -66,22 +69,26 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#ccc",
+    borderColor: "#ddd",
     borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    paddingHorizontal: 15,
+    paddingVertical: 12,
+    backgroundColor: '#fff',
   },
   icon: {
-    marginRight: 8,
+    marginRight: 10,
   },
   input: {
     flex: 1,
     fontSize: 16,
     color: "#000",
   },
-  toggleText: {
-    fontSize: 14,
-    color: "#007AFF",
-    marginLeft: 10,
+  inputDisabled: {
+    color: '#999',
+  },
+  toggleButton: {
+    padding: 5,
   },
 });
+
+export default CustomInput;

@@ -3,6 +3,7 @@ import { Slot, useRouter } from "expo-router";
 import { useEffect } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { AuthProvider, useAuth } from "../Server/context/AuthContext";
+import { ThemeProvider } from "../components/ThemeContext";
 
 
 function AuthNavigator() {
@@ -31,7 +32,9 @@ function AuthNavigator() {
 export default function Layout() {
   return (
     <AuthProvider>
+      <ThemeProvider>
       <AuthNavigator />
+      </ThemeProvider>
     </AuthProvider>
   );
 }

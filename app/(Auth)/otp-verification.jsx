@@ -45,8 +45,7 @@ export default function OTPVerification() {
 
       Toast.show({ type: "success", text1: "OTP verified" });
       
-      // ✅ REMOVED: Manual navigation - RootLayout will handle this automatically
-      // router.replace("/(drawer)");  
+      router.replace("/(drawer)");  
 
     } catch (err) {
       Toast.show({

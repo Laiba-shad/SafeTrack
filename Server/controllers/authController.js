@@ -4,8 +4,8 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
+const JoinCode = require("../models/JoinCode");
 
-// ----------------- EMAIL HELPER -----------------
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
@@ -23,17 +23,13 @@ async function sendOTP(email, otp) {
   });
 }
 
-// ----------------- REGISTER -----------------
 exports.registerUser = async (req, res) => {
   try {
     if (!req.body) return res.status(400).json({ message: "No request body provided" });
 
     let { username, email, password, role, circleName, joinCode } = req.body;
-
-    // Normalize
     if (typeof email === "string") email = email.trim().toLowerCase();
 
-    // Basic required fields
     if (!username || !email || !password || !role) {
       return res.status(400).json({ message: "Please Fill All Fields" });
     }
@@ -41,7 +37,6 @@ exports.registerUser = async (req, res) => {
     const existingUser = await User.findOne({ email });
     if (existingUser) return res.status(400).json({ message: "User already exists" });
 
-    // Role-specific requirements
     if (role === "admin" && !circleName) {
       return res.status(400).json({ message: "Circle name is required for admins" });
     }
@@ -199,27 +194,37 @@ exports.loginUser = async (req, res) => {
   }
 };
 // ----------------- JOIN CIRCLE (MEMBER) -----------------
+// Server/controllers/authController.js
 exports.joinCircle = async (req, res) => {
   try {
-    const { userId, joinCode } = req.body || {};
-    if (!userId || !joinCode) {
-      return res.status(400).json({ message: "userId and joinCode are required" });
+    const { joinCode } = req.body || {};
+    if (!joinCode) {
+      return res.status(400).json({ message: "joinCode is required" });
     }
-
-    const circle = await Circle.findOne({ code: joinCode });
-    if (!circle) return res.status(404).json({ message: "Invalid join code" });
-
+    
+    // Find the join code
+    const codeDoc = await JoinCode.findOne({ code: joinCode });
+    if (!codeDoc) {
+      return res.status(404).json({ message: "Invalid join code" });
+    }
+    
+    // Get the circle
+    const circle = await Circle.findById(codeDoc.circleId);
+    if (!circle) return res.status(404).json({ message: "Circle not found" });
+    
+    // Add user to circle if not already a member
+    const userId = req.user.id; // From your middleware
     if (!circle.members.includes(userId)) {
       circle.members.push(userId);
       await circle.save();
     }
-
+    
+    // Update user's circleId
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ message: "User not found" });
-
     user.circleId = circle._id;
     await user.save();
-
+    
     return res.json({ message: "Joined circle successfully", circle });
   } catch (error) {
     console.error("joinCircle error:", error);
@@ -228,18 +233,37 @@ exports.joinCircle = async (req, res) => {
 };
 
 // ----------------- GENERATE NEW JOIN CODE (ADMIN) -----------------
+// Server/controllers/authController.js
 exports.generateJoinCode = async (req, res) => {
   try {
+    // The circleId should be in the request body
     const { circleId } = req.body || {};
     if (!circleId) return res.status(400).json({ message: "circleId is required" });
-
+    
     const circle = await Circle.findById(circleId);
     if (!circle) return res.status(404).json({ message: "Circle not found" });
-
+    
+    // Check if the user is the admin of this circle
+    if (circle.admin.toString() !== req.user.id) {
+      return res.status(403).json({ message: "Access denied. Only circle admins can generate join codes." });
+    }
+    
+    // Generate a new code
     const newCode = crypto.randomBytes(3).toString("hex").toUpperCase();
+    
+    // Create a new join code document
+    const joinCode = new JoinCode({
+      code: newCode,
+      adminId: req.user.id, // From your middleware
+      circleId: circle._id
+    });
+    
+    await joinCode.save();
+    
+    // Update the circle with the new code
     circle.code = newCode;
     await circle.save();
-
+    
     return res.json({ message: "New join code generated", code: newCode });
   } catch (error) {
     console.error("generateJoinCode error:", error);

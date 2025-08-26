@@ -31,8 +31,10 @@ app.get('/test', (req, res) => res.json({ success: true, message: 'API working' 
 app.use('/api/v1/auth', require('./routes/authRoutes'));
 app.use('/api/v1', todoRoutes);
 app.use('/api/v1', require('./routes/userRoute'));
-
-
+app.use('/api/v1/circle', require('./routes/circleRoutes'));
+app.use('api/v1', require('./routes/userRoute'))
+app.use('/api/v1/notifications',require('./routes/notificationRoutes'))
+app.use('/api/v1/users', require('./routes/userRoute'))
 const server = http.createServer(app); 
 const io = new Server(server, {
   cors: {

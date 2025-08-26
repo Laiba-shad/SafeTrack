@@ -1,13 +1,9 @@
-const Todo = require('../models/todoModels.js');
-const User = require("../models/userModel.js")
-
-
-// Create task
+const Todo = require('../models/todoModels');
+const User = require("../models/userModel");
+const {createNotification} = require('./notificationController')
 const createTodo = async (req, res) => {
   try {
     const { title, description, dueDate, assignedTo, createdBy } = req.body;
-
-    // check if both users exist
     const assigner = await User.findById(createdBy);
     const assignee = await User.findById(assignedTo);
 
@@ -25,81 +21,100 @@ const createTodo = async (req, res) => {
 
     await todo.save();
 
-    res.status(201).json({ message: "Task created", todo });
+    res.status(201).json({ success: true, message: "Task created", todo });
   } catch (error) {
     console.error("Error creating task:", error);
-    res.status(500).json({ message: "Failed to create task" });
+    res.status(500).json({ success: false, message: "Failed to create task" });
   }
 };
 
-
-
-// Get all tasks
 const getTodos = async (req, res) => {
   try {
-    // Get assignedTo user ID from query params
     const { assignedTo } = req.query;
     
-    let query = {};
-    if (assignedTo) {
-      query.assignedTo = assignedTo;
+    if (!assignedTo || assignedTo === 'undefined') {
+      return res.status(400).json({ success: false, message: 'Missing required parameter: assignedTo' });
     }
     
-    const tasks = await Todo.find(query)
-      .populate('assignedTo', 'username email') // Add needed fields
-      .exec();
-      
-    res.status(200).json({ success: true, todos: tasks });
+    const todos = await Todo.find({ assignedTo });
+    
+    res.json({ success: true, todos: todos || [] });
   } catch (error) {
-    console.error('Get tasks error:', error);
-    res.status(500).json({ success: false, message: 'Failed to get tasks', error });
+    console.error('Get todos error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch tasks', error });
   }
 };
 
-
-// Update task
 const updateTodo = async (req, res) => {
   try {
     const { id } = req.params;
     const updates = req.body;
 
     const task = await Todo.findByIdAndUpdate(id, updates, { new: true });
-    res.status(200).json({ success: true, message: 'Task updated', task });
+    res.status(200).json({ success: true, message: "Task updated", task });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Update failed', error });
+    res.status(500).json({ success: false, message: "Update failed", error });
   }
 };
 
-// Delete task
 const deleteTodo = async (req, res) => {
   try {
     const { id } = req.params;
     const deletedTask = await Todo.findByIdAndDelete(id);
 
     if (!deletedTask) {
-      return res.status(404).json({ success: false, message: 'Task not found' });
+      return res.status(404).json({ success: false, message: "Task not found" });
     }
 
-    res.status(200).json({ success: true, message: 'Task deleted', task: deletedTask });
+    res.status(200).json({ success: true, message: "Task deleted", task: deletedTask });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Delete failed', error });
+    res.status(500).json({ success: false, message: "Delete failed", error });
   }
 };
 
-// Get tasks created by an admin
 const getTasksByAdmin = async (req, res) => {
   try {
     const { adminId } = req.params;
 
     const todos = await Todo.find({ createdBy: adminId })
-      .populate("assignedTo", "username email"); // optional: populate user info
+      .populate("assignedTo", "username email");
 
-    res.status(200).json({ todos });
+    res.status(200).json({ success: true, todos });
   } catch (error) {
     console.error("Error fetching admin tasks:", error);
-    res.status(500).json({ message: "Failed to fetch admin tasks" });
+    res.status(500).json({ success: false, message: "Failed to fetch admin tasks" });
   }
 };
+
+const updateTaskStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body; 
+
+    const task = await Todo.findByIdAndUpdate(
+      id,
+      { status },
+      { new: true }
+    ).populate('assignedTo createdBy', 'username email');
+
+    if (!task) {
+      return res.status(404).json({ success: false, message: 'Task not found' });
+    }
+
+    await createNotification(
+      task.createdBy._id,
+      task.assignedTo._id,
+      status === 'accepted' ? 'task_accepted' : 'task_declined',
+      `Task "${task.title}" has been ${status}`,
+      task._id
+    );
+
+    res.status(200).json({ success: true, message: 'Task status updated', task });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Failed to update task status', error });
+  }
+};
+
 
 
 module.exports = {
@@ -107,5 +122,6 @@ module.exports = {
   getTodos,
   updateTodo,
   deleteTodo,
-  getTasksByAdmin
+  getTasksByAdmin,
+  updateTaskStatus
 };

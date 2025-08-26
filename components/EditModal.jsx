@@ -1,6 +1,7 @@
-import DateTimePicker from "@react-native-community/datetimepicker";
+// components/EditModal.jsx
 import { useEffect, useState } from "react";
 import {
+  Button,
   Modal,
   StyleSheet,
   Text,
@@ -8,6 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import DateTimePicker from "react-native-modal-datetime-picker";
 import TodoService from "../Services/TodoServices";
 
 const EditModal = ({ visible, onClose, task, onTaskUpdated }) => {
@@ -22,7 +24,7 @@ const EditModal = ({ visible, onClose, task, onTaskUpdated }) => {
     if (task) {
       setTitle(task.title || "");
       setDescription(task.description || "");
-      setDueDate(task.dueDate ? new Date(task.dueDate) : new Date()); 
+      setDueDate(task.dueDate ? new Date(task.dueDate) : new Date());
     }
   }, [task]);
 
@@ -31,11 +33,9 @@ const EditModal = ({ visible, onClose, task, onTaskUpdated }) => {
       const payload = {
         title,
         description,
-        dueDate: dueDate ? new Date(dueDate).toISOString() : null, 
+        dueDate: dueDate ? new Date(dueDate).toISOString() : null,
       };
-
-      const res = await TodoService.updateTask(task._id, payload);
-
+      const res = await TodoService.updateTodo(task._id, payload);
       const updatedTask = { ...task, ...res.data };
       onTaskUpdated(updatedTask);
       onClose();
@@ -44,55 +44,61 @@ const EditModal = ({ visible, onClose, task, onTaskUpdated }) => {
     }
   };
 
+  const handleConfirmDate = (date) => {
+    setDueDate(date);
+    setShowDatePicker(false);
+  };
+
+  const handleCancelDate = () => {
+    setShowDatePicker(false);
+  };
+
   return (
     <Modal visible={visible} animationType="slide" transparent>
       <View style={styles.modalOverlay}>
         <View style={styles.modalContainer}>
-          <Text style={styles.header}>Edit Task</Text>
-
+          <Text style={styles.title}>Edit Task</Text>
+          
           <TextInput
             style={styles.input}
             value={title}
             onChangeText={setTitle}
+            placeholder="Task Title"
           />
+          
           <TextInput
             style={styles.input}
             value={description}
             onChangeText={setDescription}
+            placeholder="Description"
+            multiline
           />
-
-          <TouchableOpacity onPress={() => setShowDatePicker(true)}>
+          
+          <TouchableOpacity 
+            style={styles.dateButton}
+            onPress={() => setShowDatePicker(true)}
+          >
             <Text style={styles.dateText}>
-              Due Date: {dueDate.toLocaleString()}
+              Due Date: {dueDate.toLocaleDateString()} {dueDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
             </Text>
           </TouchableOpacity>
-          {showDatePicker && (
-            <DateTimePicker
-              value={dueDate}
-              mode="datetime"
-              display="default"
-              onChange={(event, selectedDate) => {
-                setShowDatePicker(false);
-                if (selectedDate) setDueDate(new Date(selectedDate)); // ✅ always Date
-              }}
-            />
-          )}
-
-          <View style={styles.actions}>
-            <TouchableOpacity style={styles.btn} onPress={onClose}>
-              <Text style={styles.btnText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.btn} onPress={handleUpdate}>
-              <Text style={styles.btnText}>Update</Text>
-            </TouchableOpacity>
+          
+          <DateTimePicker
+            isVisible={showDatePicker}
+            mode="datetime"
+            onConfirm={handleConfirmDate}
+            onCancel={handleCancelDate}
+          />
+          
+          <View style={styles.buttonContainer}>
+            <Button title="Cancel" onPress={onClose} color="#888" />
+            <Button title="Update" onPress={handleUpdate} color="#FF9800" />
           </View>
         </View>
       </View>
     </Modal>
   );
 };
-
-export default EditModal;
 
 const styles = StyleSheet.create({
   modalOverlay: {
@@ -103,21 +109,40 @@ const styles = StyleSheet.create({
   modalContainer: {
     backgroundColor: "#fff",
     margin: 20,
+    borderRadius: 12,
     padding: 20,
-    borderRadius: 10,
   },
-  header: { fontSize: 20, fontWeight: "bold", marginBottom: 10 },
+  title: {
+    fontSize: 22,
+    fontWeight: "bold",
+    marginBottom: 20,
+    color: "#008080",
+    textAlign: "center",
+  },
   input: {
-    borderBottomWidth: 1,
-    marginBottom: 10,
-    padding: 8,
+    borderWidth: 1,
+    borderColor: "#ccc",
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 15,
+    fontSize: 16,
   },
-  dateText: { marginVertical: 10, color: "#333" },
-  actions: {
+  dateButton: {
+    borderWidth: 1,
+    borderColor: "#ccc",
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 15,
+  },
+  dateText: {
+    fontSize: 16,
+    color: "#333",
+  },
+  buttonContainer: {
     flexDirection: "row",
-    justifyContent: "flex-end",
+    justifyContent: "space-between",
     marginTop: 10,
   },
-  btn: { marginLeft: 15 },
-  btnText: { color: "#006678", fontWeight: "bold" },
 });
+
+export default EditModal;

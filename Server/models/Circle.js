@@ -2,8 +2,8 @@ const mongoose = require("mongoose");
 
 const circleSchema = new mongoose.Schema({
 
-  name: { type: String, required: true },       // e.g. "Laiba's Family"
-  code: { type: String, unique: true },         // join code
+  name: { type: String, required: true },       
+  code: { type: String, unique: true },         
   admin: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
   members: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
 }, { timestamps: true });

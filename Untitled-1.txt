@@ -1,5 +1,4 @@
- Auth of Admin  ✅
-  regustration , otp , redirectiong to home is done
-
-
-// components/CreateModal.jsx
+things are going good just each ahve little bit issue 
+profile ui updation giving error
+setting dark mode start giving error 
+member being enter but into circle is giving issue 
